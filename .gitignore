@@ -8,4 +8,4 @@
 .Ruserdata
 cpp/*.o
 cpp/*.so
-section_3/results_pred_popweighted_fixed/*.RData
+wastewater model/*.RData
