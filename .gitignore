@@ -1,0 +1,11 @@
+# Ignore Rstudio files
+.Rproj.user/
+.Rproj
+
+# Ignore data and history files
+.Rhistory
+.RData
+.Ruserdata
+cpp/*.o
+cpp/*.so
+section_3/results_pred_popweighted_fixed/*.RData
