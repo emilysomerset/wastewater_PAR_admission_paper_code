@@ -79,13 +79,7 @@ make_empty_acc <- function(n_grid) {
       value = numeric(0),
       value_int = integer(0),
       Pi = numeric(0),
-      pY = numeric(0),
       Y = integer(0),
-      A = integer(0),
-      tau = numeric(0),
-      tau_mean = numeric(0),
-      rho_tau = numeric(0),
-      tau_mean_logit = numeric(0),
       age1 = numeric(0),
       age2 = numeric(0),
       age3 = numeric(0),
@@ -101,10 +95,9 @@ make_empty_acc <- function(n_grid) {
   acc
 }
 
-files <- list.files(pattern = "^stan_samples_nolag_wastewatersample_.*\\.rds$", full.names = TRUE)
-# conv <- NULL
-# for (i in 1:length(files)){load(files[i]); conv[i] = max(wb_rhat$rhat)}
-J <- 133
+files <- list.files( pattern = "^stan_samples_nolag_noadm_wastewatersample_.*\\.rds$", full.names = TRUE)
+
+J <- 185
 I <- 4
 grid <- expand.grid(age = 1:I, time = 1:J)
 pairs <- paste0(grid$age, ",", grid$time)
@@ -123,7 +116,7 @@ print(getDoParWorkers())
 start_time <- Sys.time()
 
 results <- foreach(f_idx = seq_len(length(files))) %dopar% {
-  
+
   library(data.table)
   library(dplyr)
   library(purrr)
@@ -151,132 +144,93 @@ results <- foreach(f_idx = seq_len(length(files))) %dopar% {
   if (conv_val < 1.05){  
     # prepare an empty accumulator for this file
     acc_file <- make_empty_acc(n_grid)
+  
+  # extract long formats with thinning
+  X_long_all <- extract_var_draws(draws, var = "X", return = "long", thin = thin)
+  Pi_long_all <- extract_var_draws(draws, var = "Pi", return = "long", thin = thin)
+  C_long_all <- extract_var_draws(draws, var = "C", return = "long", thin = thin)
+
+  # inside your foreach worker, after extracting X_long_all and Pi_long_all
+  
+  setDT(X_long_all)
+  setDT(Pi_long_all)
+  setDT(C_long_all)
+  
+  # extract time index from Pi; assume Pi[time]
+  Pi_long_all[, time := as.integer(sub("^Pi\\[([0-9]+)\\]$", "\\1", variable))]
+  pi_dt <- Pi_long_all[, .(draw, time, Pi = value)]
+  setkey(pi_dt, draw, time)
+  
+  # extract time index from Pi; assume Pi[time]
+  C_long_all[, c("age", "age_col") := tstrsplit(gsub("C\\[|\\]", "", variable), ",")]
+  C_long_all[, age := as.integer(age)]
+  C_long_all[, age_col := as.integer(age_col)]
+  
+  
+  C_wide <- dcast(
+    C_long_all,
+    draw + age ~ age_col,
+    value.var = "value"
+  )
+  
+  setnames(C_wide, old = c("1","2","3","4"),
+           new = c("age1","age2","age3","age4"))
+  
+  setkey(C_wide, draw)
+  
+  
+  
+  # extract age and time from X
+  X_long_all[, c("age","time") := tstrsplit(sub("^X\\[(.*)\\]$", "\\1", variable), ",", type.convert = TRUE)]
+  setkey(X_long_all, draw, time)
+  
+  # merge X and Pi by draw and time
+  merged <- merge(X_long_all, pi_dt, by = c("draw", "time"))
+  merged <- merge(merged, C_wide, by = c("draw", "age"))
+  
+  # sample Y ~ Binomial(X, Pi)
+  # ensure X >= 0
+  merged[, X_int := pmax(0, as.integer(ceiling(value)))]
+  merged[, Y := rbinom(.N, size = X_int, prob = Pi)]
+  merged[, X_cumsum_delta := cumsum(X_int)-X_int[1], by = .(draw,age)]
+  merged[, X_cumsum := cumsum(X_int), by = .(draw,age)]
+  
+  #60 + calculations
+  merged[age %in% 3:4, 
+         X_int_3_4 := sum(X_int), 
+         by = .(draw, time)]
+  
+  merged[age %in% 3:4, 
+         X_cumsum_delta_3_4 := sum(X_cumsum_delta), 
+         by = .(draw, time)]
+  
+  merged[age %in% 3:4, 
+         X_cumsum_3_4 := sum(X_cumsum), 
+         by = .(draw, time)]
+  
+  # now assign into accumulator
+  for (i in seq_len(nrow(merged))) {
+    age_i <- merged$age[i]
+    time_j <- merged$time[i]
+    key_grid <- match(paste0(age_i,",",time_j), pairs)
     
-    # extract long formats with thinning
-    X_long_all <- extract_var_draws(draws, var = "X", return = "long", thin = thin)
-    Pi_long_all <- extract_var_draws(draws, var = "Pi", return = "long", thin = thin)
-    tau_long_all <- extract_var_draws(draws, var = "tau", return = "long", thin = thin)
-    tau_mean_long_all <- extract_var_draws(draws, var = "tau_mean", return = "long", thin = thin)
-    rho_tau_long_all <- extract_var_draws(draws, var = "rho_tau", return = "long", thin = thin)
-    C_long_all <- extract_var_draws(draws, var = "C", return = "long", thin = thin)
-    
-    # inside your foreach worker, after extracting X_long_all and Pi_long_all
-    
-    setDT(X_long_all)
-    setDT(Pi_long_all)
-    setDT(C_long_all)
-    setDT(tau_long_all)
-    setDT(rho_tau_long_all)
-    setDT(tau_mean_long_all)
-    
-    # extract time index from Pi; assume Pi[time]
-    Pi_long_all[, time := as.integer(sub("^Pi\\[([0-9]+)\\]$", "\\1", variable))]
-    pi_dt <- Pi_long_all[, .(draw, time, Pi = value)]
-    setkey(pi_dt, draw, time)
-    
-    # extract time, age index from tau;  tau[age, time]
-    tau_long_all[, c("age","time") := tstrsplit(sub("^tau\\[(.*)\\]$", "\\1", variable), ",", type.convert = TRUE)]
-    tau_dt <- tau_long_all[, .(draw, time,age, tau = value)]
-    setkey(tau_dt, draw, time)
-    
-    # extract time, age index from tau;  tau[age, time]
-    tau_mean_long_all[, c("age") := tstrsplit(sub("^tau_mean\\[([0-9]+)\\]$", "\\1", variable), ",", type.convert = TRUE)]
-    tau_mean_dt <- tau_mean_long_all[, .(draw, age, tau_mean = value)]
-    setkey(tau_mean_dt, draw)
-    
-    # rho
-    rho_tau_long_all <-  rho_tau_long_all[, .(draw, rho_tau = value)]
-    
-    # extract time index from Pi; assume Pi[time]
-    C_long_all[, c("age", "age_col") := tstrsplit(gsub("C\\[|\\]", "", variable), ",")]
-    C_long_all[, age := as.integer(age)]
-    C_long_all[, age_col := as.integer(age_col)]
-    
-    
-    C_wide <- dcast(
-      C_long_all,
-      draw + age ~ age_col,
-      value.var = "value"
-    )
-    
-    setnames(C_wide, old = c("1","2","3","4"),
-             new = c("age1","age2","age3","age4"))
-    
-    setkey(C_wide, draw)
-    
-    
-    
-    # extract age and time from X
-    X_long_all[, c("age","time") := tstrsplit(sub("^X\\[(.*)\\]$", "\\1", variable), ",", type.convert = TRUE)]
-    setkey(X_long_all, draw, time)
-    
-    # merge X and Pi by draw and time
-    merged <- merge(X_long_all, pi_dt, by = c("draw", "time"))
-    merged <- merge(merged, tau_dt, by = c("draw","time","age"))
-    merged <- merge(merged, tau_mean_dt, by = c("draw","age"))
-    merged <- merge(merged,     rho_tau_long_all, by = c("draw"))
-    merged <- merge(merged, C_wide, by = c("draw", "age"))
-    
-    # sample Y ~ Binomial(X, Pi)
-    # ensure X >= 0
-    merged[, X_int := pmax(0, as.integer(ceiling(value)))]
-    
-    merged[, c("A", "Y", "U","pY") := {
-      pA <- tau
-      pY <- Pi*(1-tau)
-      pU <- (1-tau)*(1-Pi)
-      
-      draws <- rmultinom(1, size = X_int, prob = c(pA, pY, pU))
-      list(draws[1], draws[2] + draws[1], draws[3],pY)
-    }, by = .I]
-    
-    merged[, tau_mean_logit := exp(tau_mean)/(1+exp(tau_mean)), by = .(draw,age)]
-    
-    merged[, X_cumsum_delta := cumsum(X_int)-X_int[1], by = .(draw,age)]
-    merged[, X_cumsum := cumsum(X_int), by = .(draw,age)]
-    
-    #60 + calculations
-    merged[age %in% 3:4, 
-           X_int_3_4 := sum(X_int), 
-           by = .(draw, time)]
-    
-    merged[age %in% 3:4, 
-           X_cumsum_delta_3_4 := sum(X_cumsum_delta), 
-           by = .(draw, time)]
-    
-    merged[age %in% 3:4, 
-           X_cumsum_3_4 := sum(X_cumsum), 
-           by = .(draw, time)]
-    
-    # now assign into accumulator
-    for (i in seq_len(nrow(merged))) {
-      age_i <- merged$age[i]
-      time_j <- merged$time[i]
-      key_grid <- match(paste0(age_i,",",time_j), pairs)
-      
-      acc_file[[key_grid]]$value <- c(acc_file[[key_grid]]$value, merged$value[i])
-      acc_file[[key_grid]]$value_int <- c(acc_file[[key_grid]]$value_int, merged$X_int[i])
-      acc_file[[key_grid]]$Pi <- c(acc_file[[key_grid]]$Pi, merged$Pi[i])
-      acc_file[[key_grid]]$tau <- c(acc_file[[key_grid]]$tau, merged$tau[i])
-      acc_file[[key_grid]]$rho_tau <- c(acc_file[[key_grid]]$rho_tau, merged$rho_tau[i])
-      acc_file[[key_grid]]$tau_mean <- c(acc_file[[key_grid]]$tau_mean, merged$tau_mean[i])
-      acc_file[[key_grid]]$tau_mean_logit <- c(acc_file[[key_grid]]$tau_mean_logit, merged$tau_mean_logit[i])
-      acc_file[[key_grid]]$pY <- c(acc_file[[key_grid]]$pY, merged$pY[i])
-      acc_file[[key_grid]]$Y <- c(acc_file[[key_grid]]$Y, merged$Y[i])
-      acc_file[[key_grid]]$age1 <- c(acc_file[[key_grid]]$age1, merged$age1[i])
-      acc_file[[key_grid]]$age2 <- c(acc_file[[key_grid]]$age2, merged$age2[i])
-      acc_file[[key_grid]]$age3 <- c(acc_file[[key_grid]]$age3, merged$age3[i])
-      acc_file[[key_grid]]$age4 <- c(acc_file[[key_grid]]$age4, merged$age4[i])
-      acc_file[[key_grid]]$A <- c(acc_file[[key_grid]]$A, merged$A[i])
-      acc_file[[key_grid]]$X_int_3_4 <- c(acc_file[[key_grid]]$X_int_3_4, merged$X_int_3_4[i])
-      acc_file[[key_grid]]$X_cumsum_delta <- c(acc_file[[key_grid]]$X_cumsum_delta, merged$X_cumsum_delta[i])
-      acc_file[[key_grid]]$X_cumsum <- c(acc_file[[key_grid]]$X_cumsum, merged$X_cumsum[i])
-      acc_file[[key_grid]]$X_cumsum_delta_3_4 <- c(acc_file[[key_grid]]$X_cumsum_delta_3_4, merged$X_cumsum_delta_3_4[i])
-      acc_file[[key_grid]]$X_cumsum_3_4 <- c(acc_file[[key_grid]]$X_cumsum_3_4, merged$X_cumsum_3_4[i])
-      acc_file[[key_grid]]$total_draws <- acc_file[[key_grid]]$total_draws + 1L
-    }
-    rm(draws, X_long_all, Pi_long_all, tau_long_all)
-    list(acc = acc_file, conv = conv_val)
+    acc_file[[key_grid]]$value <- c(acc_file[[key_grid]]$value, merged$value[i])
+    acc_file[[key_grid]]$value_int <- c(acc_file[[key_grid]]$value_int, merged$X_int[i])
+    acc_file[[key_grid]]$Pi <- c(acc_file[[key_grid]]$Pi, merged$Pi[i])
+    acc_file[[key_grid]]$Y <- c(acc_file[[key_grid]]$Y, merged$Y[i])
+    acc_file[[key_grid]]$age1 <- c(acc_file[[key_grid]]$age1, merged$age1[i])
+    acc_file[[key_grid]]$age2 <- c(acc_file[[key_grid]]$age2, merged$age2[i])
+    acc_file[[key_grid]]$age3 <- c(acc_file[[key_grid]]$age3, merged$age3[i])
+    acc_file[[key_grid]]$age4 <- c(acc_file[[key_grid]]$age4, merged$age4[i])
+    acc_file[[key_grid]]$X_int_3_4 <- c(acc_file[[key_grid]]$X_int_3_4, merged$X_int_3_4[i])
+    acc_file[[key_grid]]$X_cumsum_delta <- c(acc_file[[key_grid]]$X_cumsum_delta, merged$X_cumsum_delta[i])
+    acc_file[[key_grid]]$X_cumsum <- c(acc_file[[key_grid]]$X_cumsum, merged$X_cumsum[i])
+    acc_file[[key_grid]]$X_cumsum_delta_3_4 <- c(acc_file[[key_grid]]$X_cumsum_delta_3_4, merged$X_cumsum_delta_3_4[i])
+    acc_file[[key_grid]]$X_cumsum_3_4 <- c(acc_file[[key_grid]]$X_cumsum_3_4, merged$X_cumsum_3_4[i])
+    acc_file[[key_grid]]$total_draws <- acc_file[[key_grid]]$total_draws + 1L
+  }
+  rm(draws, X_long_all, Pi_long_all)
+  list(acc = acc_file, conv = conv_val)
   }
 }
 
@@ -300,17 +254,11 @@ for (accf in acc_list_per_file) {
     final_acc[[i]]$value <- c(final_acc[[i]]$value, accf[[i]]$value)
     final_acc[[i]]$value_int <- c(final_acc[[i]]$value_int, accf[[i]]$value_int)
     final_acc[[i]]$Y <- c(final_acc[[i]]$Y, accf[[i]]$Y)
-    final_acc[[i]]$A <- c(final_acc[[i]]$A, accf[[i]]$A)
     final_acc[[i]]$age1 <- c(final_acc[[i]]$age1, accf[[i]]$age1)
     final_acc[[i]]$age2 <- c(final_acc[[i]]$age2, accf[[i]]$age2)
     final_acc[[i]]$age3 <- c(final_acc[[i]]$age3, accf[[i]]$age3)
     final_acc[[i]]$age4 <- c(final_acc[[i]]$age4, accf[[i]]$age4)
     final_acc[[i]]$Pi <- c(final_acc[[i]]$Pi, accf[[i]]$Pi)
-    final_acc[[i]]$tau <- c(final_acc[[i]]$tau, accf[[i]]$tau)
-    final_acc[[i]]$rho_tau <- c(final_acc[[i]]$rho_tau, accf[[i]]$rho_tau)
-    final_acc[[i]]$tau_mean <- c(final_acc[[i]]$tau_mean, accf[[i]]$tau_mean)
-    final_acc[[i]]$tau_mean_logit <- c(final_acc[[i]]$tau_mean_logit, accf[[i]]$tau_mean_logit)
-    final_acc[[i]]$pY <- c(final_acc[[i]]$pY, accf[[i]]$pY)
     final_acc[[i]]$X_int_3_4 <- c(final_acc[[i]]$X_int_3_4, accf[[i]]$X_int_3_4)
     final_acc[[i]]$X_cumsum_delta <- c(final_acc[[i]]$X_cumsum_delta, accf[[i]]$X_cumsum_delta)
     final_acc[[i]]$X_cumsum <- c(final_acc[[i]]$X_cumsum, accf[[i]]$X_cumsum)
@@ -325,7 +273,7 @@ final_list <- vector("list", n_grid)
 for (i in seq_len(n_grid)) {
   out <- list(age = grid$age[i], time = grid$time[i], total_draws = final_acc[[i]]$total_draws)
   
-  nums <- c("value", "value_int", "Y","A","tau","rho_tau","tau_mean","tau_mean_logit",  "pY", "age1","age2","age3","age4", "Pi","X_int_3_4","X_cumsum_delta","X_cumsum_delta_3_4","X_cumsum","X_cumsum_3_4")
+  nums <- c("value", "value_int", "Y","age1","age2","age3","age4", "Pi","X_int_3_4","X_cumsum_delta","X_cumsum_delta_3_4","X_cumsum","X_cumsum_3_4")
   for (nm in nums) {
     vec <- final_acc[[i]][[nm]]
     if (length(vec) == 0) {
@@ -346,6 +294,6 @@ for (i in seq_len(n_grid)) {
 }
 
 final_summary <- bind_rows(final_list)
-save(file = "results_nolag_toronto_thinned.RData", list = c("final_summary","conv"))
+save(file = "results_nolag_toronto_thinned_noadm.RData", list = c("final_summary","conv"))
 
 message("Done. Results saved to results_lagged_toronto.RData")
