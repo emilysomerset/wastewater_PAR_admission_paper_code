@@ -9,3 +9,6 @@
 cpp/*.o
 cpp/*.so
 wastewater model/*.RData
+age epidemic curve Toronto/*.RData
+age epidemic with admission Toronto/*.RData
+
