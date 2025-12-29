@@ -230,6 +230,10 @@ round(final_summary$tau_mean_med[1:4],2)
 round(final_summary$tau_mean_q025[1:4],2)
 round(final_summary$tau_mean_q975[1:4],2)
 
+round(final_summary$tau_mean_logit_med[1:4]*100,2)
+round(final_summary$tau_mean_logit_q025[1:4]*100,2)
+round(final_summary$tau_mean_logit_q975[1:4]*100,2)
+
 round(final_summary$rho_tau_med[1],2)
 round(final_summary$rho_tau_q025[1],2)
 round(final_summary$rho_tau_q975[1],2)
