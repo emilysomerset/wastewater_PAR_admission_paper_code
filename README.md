@@ -106,22 +106,6 @@ Posterior summaries include medians and credible intervals for latent infections
 
 Cumulative infections were calculated within each posterior draw before computing posterior quantiles.
 
-## MCMC convergence diagnostics
-
-Convergence was assessed separately for each of the 500 conditional fits using rank-normalized \(\widehat R\), bulk and tail effective sample sizes (ESS), and divergent transitions.
-
-The `MCMC_diagnostics/` directories contain scripts and numerical summaries of these diagnostics.
-
-| Diagnostic | Case-only model | Cases + admissions model |
-|---|---:|---:|
-| Maximum \(\widehat R\) | 1.023 | 1.021 |
-| Fits with maximum \(\widehat R>1.01\) | 45/500 (9%) | 70/500 (14%) |
-| Fits with maximum \(\widehat R>1.05\) | 0 | 0 |
-| Minimum bulk ESS | 284 | 385 |
-| Minimum tail ESS | 685 | 427 |
-
-These results indicate generally satisfactory convergence across the conditional fits. 
-
 ## Prior–posterior comparisons
 
 The `prior_posterior/` directories contain the data and R scripts used to compare prior and posterior distributions of selected parameters.
