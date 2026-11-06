@@ -10,7 +10,7 @@ library(ggplot2)
 library(lubridate)
 
 load("./age epidemic curve Toronto/epidemic_model_data_noadm.RData")
-load("./age epidemic curve Toronto/results_nolag_toronto_thinned_noadm.RData")
+load("./age epidemic curve Toronto/results_nolag_toronto_pooled_common_rw.RData")
 load("./data/seroprevalence_by_age_canada.RData")
 
 sero_keep_can <- x %>% 
@@ -82,6 +82,8 @@ sero_keep_ont <- x %>%
 final_summary$age <- factor(final_summary$age, levels = 1:4, labels = levels(case_age_merged$age))
 final_summary$earliest_week_end_date <- (final_summary$time-1)*7 + min(case_merged$earliest_week_end_date)
 
+# Population counts from Statistics Canada 2021 Census Profile,
+# Toronto, City (C), Ontario
 age_count_df <- data.frame(age = c("0 to 39","40 to 59", "60 to 79", "80+","60+",
                                    "60 to 69", "70+","70 to 79"),
                            cc = c(384295+134810+185650+243955+246785+213810,
@@ -569,6 +571,4 @@ ggsave(filename = paste0("./age epidemic curve Toronto/plots/prob.pdf"),
        width = 8/2*2, 
        height = 8/3,
        dpi = 300)
-
-
 

@@ -238,37 +238,3 @@ marginals <- mdl1$marginals
 df_full =data_foranalysis$df_full
 
 save(file="./wastewater model/wastewater_model_CAN_phachist.RData", list = c("samps1","marginals","tmbdat","df_full"))
-
-###
-load("./wastewater model/wastewater_model_CAN_phachist.RData")
-source("./functions_general/process_results_posteriorsamps.R")
-
-results <- process_results(df_full =df_full,
-                           tmbdat = tmbdat, 
-                           samps1 = samps1, 
-                           polyOrder=3, 
-                           AR=TRUE)
-
-
-save(file="./wastewater model/results_model_CAN_phachist.RData", list = "results")
-
-load("./wastewater model/results_model_CAN_phachist.RData")
-source("./functions_general/process_results_posteriorsamps.R")
-
-results <- process_results(df_full =df_full,
-                           tmbdat = tmbdat, 
-                           samps1 = samps1, 
-                           polyOrder=3, 
-                           AR=TRUE,
-                           single_station = FALSE)
-
-results$v_u <- results$v_u %>% filter(substr(site_id,1,1) %in% "T")
-results$v_u_fixed <- results$v_u_fixed %>% filter(substr(site_id,1,1) %in% "T")
-results$v_fixed <- results$v_fixed%>% filter(substr(site_id,1,1) %in% "T")
-
-results$v_u_fixed %$% site_id %>% unique()
-results$v_u %$% site_id %>% unique()
-results$v_fixed %$% site_id %>% unique()
-
-save(file="./wastewater model/results_model_CAN_phachist_ONfilt.RData", list = "results")
-

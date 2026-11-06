@@ -10,7 +10,7 @@ library(ggplot2)
 library(lubridate)
 
 #### 
-load("./age epidemic curve Toronto with admissions/results_nolag_toronto_thinned.RData")
+load("./age epidemic curve Toronto with admissions/admissions_common_revised_pooled_reduced.RData")
 load("./age epidemic curve Toronto with admissions/epidemic_model_nonlag_data.RData")
 final_summary$age <- factor(final_summary$age, levels = 1:4, labels = levels(case_age_merged$age))
 final_summary$earliest_week_end_date <- (final_summary$time-1)*7 + min(case_merged$earliest_week_end_date)
@@ -109,6 +109,7 @@ ggsave(filename = paste0("./age epidemic curve Toronto with admissions/plots/X_o
        width = 8/2,
        height = 8/3,
        dpi = 300)
+
 
 
 
@@ -234,6 +235,6 @@ round(final_summary$tau_mean_logit_med[1:4]*100,2)
 round(final_summary$tau_mean_logit_q025[1:4]*100,2)
 round(final_summary$tau_mean_logit_q975[1:4]*100,2)
 
-round(final_summary$rho_tau_med[1],2)
-round(final_summary$rho_tau_q025[1],2)
-round(final_summary$rho_tau_q975[1],2)
+round(final_summary$rho_tau_med[1],3)
+round(final_summary$rho_tau_q025[1],3)
+round(final_summary$rho_tau_q975[1],3)
